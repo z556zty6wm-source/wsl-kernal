@@ -1,0 +1,40 @@
+name: Build WSL2 kernel with RT5370 Wi-Fi
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    # Native ARM64 runner (free for public repositories)
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - name: Get Microsoft WSL2 kernel source (6.18.54.1)
+        uses: actions/checkout@v4
+        with:
+          repository: microsoft/WSL2-Linux-Kernel
+          ref: linux-msft-wsl-6.18.54.1
+          fetch-depth: 1
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential flex bison libssl-dev libelf-dev bc dwarves python3
+
+      - name: Configure kernel
+        run: |
+          cp Microsoft/config-wsl-arm64 .config
+          for o in WIRELESS CFG80211 MAC80211 RT2X00 RT2X00_LIB_USB RT2800USB RT2800USB_RT53XX RT2800USB_RT3573 RT2800USB_UNKNOWN USBIP_CORE USBIP_VHCI_HCD; do
+            scripts/config --enable $o
+          done
+          make olddefconfig
+          echo "---- resulting options ----"
+          grep -E "CONFIG_(CFG80211|MAC80211|RT2800USB|RT2X00|USBIP_VHCI_HCD)[A-Z0-9_]*=" .config
+
+      - name: Build kernel Image
+        run: make -j"$(nproc)" Image
+
+      - name: Upload Image
+        uses: actions/upload-artifact@v4
+        with:
+          name: wsl-kernel-arm64-rt5370
+          path: arch/arm64/boot/Image
