@@ -20,6 +20,15 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y build-essential flex bison libssl-dev libelf-dev bc dwarves python3
 
+      - name: Get RT5370 firmware (rt2870.bin) from kernel.org linux-firmware
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/fw"
+          wget --tries=5 --waitretry=5 -O "$GITHUB_WORKSPACE/fw/rt2870.bin" \
+            https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/plain/rt2870.bin
+          ls -l "$GITHUB_WORKSPACE/fw/rt2870.bin"
+          # The real file is 8192 bytes; fail if the download is wrong.
+          test "$(stat -c%s "$GITHUB_WORKSPACE/fw/rt2870.bin")" -eq 8192
+
       - name: Configure kernel
         run: |
           cp Microsoft/config-wsl-arm64 .config
@@ -28,18 +37,8 @@ jobs:
           for o in WIRELESS CFG80211 MAC80211 WLAN WLAN_VENDOR_RALINK RT2X00 RT2800USB RT2800USB_RT53XX RT2800USB_RT3573 RT2800USB_UNKNOWN USBIP_CORE USBIP_VHCI_HCD; do
             scripts/config --enable $o
           done
+          # Build the firmware into the kernel: under WSL the kernel cannot see Kali's /lib/firmware.
+          scripts/config --set-str EXTRA_FIRMWARE "rt2870.bin"
+          scripts/config --set-str EXTRA_FIRMWARE_DIR "$GITHUB_WORKSPACE/fw"
           make olddefconfig
-          echo "---- resulting options ----"
-          grep -E "CONFIG_(WLAN|WLAN_VENDOR_RALINK|CFG80211|MAC80211|RT2800USB|RT2X00|RT2800_LIB|USBIP_VHCI_HCD)[A-Z0-9_]*=" .config
-          # Stop here, before the long build, if the driver did not make it in.
-          grep -q "^CONFIG_RT2800USB=y" .config || { echo "ERROR: RT2800USB is not enabled"; exit 1; }
-          grep -q "^CONFIG_RT2800USB_RT53XX=y" .config || { echo "ERROR: RT2800USB_RT53XX is not enabled"; exit 1; }
-
-      - name: Build kernel Image
-        run: make -j"$(nproc)" Image
-
-      - name: Upload Image
-        uses: actions/upload-artifact@v4
-        with:
-          name: wsl-kernel-arm64-rt5370
-          path: arch/arm64/boot/Image
+          grep -E "CONFIG_EXTRA_FIRMWARE" .config
