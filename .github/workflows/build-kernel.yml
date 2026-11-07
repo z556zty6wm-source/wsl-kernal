@@ -42,3 +42,18 @@ jobs:
           scripts/config --set-str EXTRA_FIRMWARE_DIR "$GITHUB_WORKSPACE/fw"
           make olddefconfig
           grep -E "CONFIG_EXTRA_FIRMWARE" .config
+          grep -q '^CONFIG_EXTRA_FIRMWARE="rt2870.bin"' .config || { echo "ERROR: EXTRA_FIRMWARE not set"; exit 1; }
+          echo "---- resulting options ----"
+          grep -E "CONFIG_(WLAN|WLAN_VENDOR_RALINK|CFG80211|MAC80211|RT2800USB|RT2X00|RT2800_LIB|USBIP_VHCI_HCD)[A-Z0-9_]*=" .config
+          # Stop here, before the long build, if the driver did not make it in.
+          grep -q "^CONFIG_RT2800USB=y" .config || { echo "ERROR: RT2800USB is not enabled"; exit 1; }
+          grep -q "^CONFIG_RT2800USB_RT53XX=y" .config || { echo "ERROR: RT2800USB_RT53XX is not enabled"; exit 1; }
+
+      - name: Build kernel Image
+        run: make -j"$(nproc)" Image
+
+      - name: Upload Image
+        uses: actions/upload-artifact@v4
+        with:
+          name: wsl-kernel-arm64-rt5370-v4
+          path: arch/arm64/boot/Image
